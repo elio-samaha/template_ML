@@ -133,3 +133,25 @@ if TASK == "regression":
     dw = sms.durbin_watson(resid)
     lb = acorr_ljungbox(resid, lags=[10], return_df=True)
     print(f"Durbin–Watson={dw:.3f} | Ljung–Box(10) p={lb['lb_pvalue'].iloc[0]:.3g}")
+
+
+# Regression_models.py (optional)
+from xgboost import XGBRegressor
+
+def fit_xgb_regressor_es(preprocess, X_train, y_train, X_test, y_test,
+                         is_time_series=False, valid_size=0.2, random_state=42):
+    X_all = pd.concat([X_train, X_test], axis=0)
+    preprocess.fit(X_all)
+    Xtr = preprocess.transform(X_train)
+    Xte = preprocess.transform(X_test)
+    train_idx, valid_idx = make_val_split_idx(Xtr.shape[0], test_size=valid_size, is_time_series=is_time_series, random_state=random_state)
+    X_tr, y_tr = Xtr[train_idx], y_train.iloc[train_idx]
+    X_val, y_val = Xtr[valid_idx], y_train.iloc[valid_idx]
+    xgb = XGBRegressor(
+        n_estimators=3000, learning_rate=0.03, max_depth=6,
+        subsample=0.8, colsample_bytree=0.8, reg_lambda=1.0, reg_alpha=0.0,
+        random_state=random_state, objective="reg:squarederror", tree_method="hist", n_jobs=-1
+    )
+    xgb.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], eval_metric="rmse", early_stopping_rounds=150, verbose=False)
+    y_pred = xgb.predict(Xte)
+    return xgb, y_pred

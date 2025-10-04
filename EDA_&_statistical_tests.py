@@ -54,3 +54,15 @@ if IS_TIME_SERIES and len(num_cols) >= 2:
         print(f"coint p={pval:.3g} (p<0.05 suggests cointegration)")
     except Exception as e:
         print("Coint error:", e)
+
+# EDA_&_statistical_tests.py
+import numpy as np
+import pandas as pd
+
+def class_balance_report(y):
+    vc = pd.Series(y).value_counts(normalize=True).sort_index()
+    print("Class balance (proportions):")
+    print(vc.to_string())
+    if (vc.min() < 0.2) and (len(vc) == 2):
+        print("[Hint] Strong class imbalance detected -> use class_weight='balanced', tune threshold, or AUC/PR-AUC.")
+

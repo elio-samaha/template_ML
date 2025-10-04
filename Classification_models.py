@@ -81,3 +81,114 @@ if TASK == "classification":
     plt.show()
     ConfusionMatrixDisplay.from_predictions(y_test, y_pred_logit, normalize="true")
     plt.show()
+
+# Classification_models.py
+import numpy as np
+import pandas as pd
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (accuracy_score, roc_auc_score, precision_recall_fscore_support,
+                             RocCurveDisplay, ConfusionMatrixDisplay)
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+
+from Preprocessing_pipelines import get_preprocess
+from Imports_config_helpers import make_val_split_idx
+
+try:
+    from xgboost import XGBClassifier
+    HAS_XGB = True
+except Exception:
+    HAS_XGB = False
+
+# ---------- evaluation ----------
+def evaluate_classifiers(results, y_test):
+    """
+    results: dict name -> dict(pred=, proba=)
+    """
+    for name, out in results.items():
+        y_pred = out.get("pred", None)
+        y_proba = out.get("proba", None)
+        if y_pred is None:
+            print(f"{name}: skipped"); continue
+        acc = accuracy_score(y_test, y_pred)
+        p, r, f, _ = precision_recall_fscore_support(y_test, y_pred, average="binary", zero_division=0)
+        msg = f"{name:12s} | Acc={acc:.3f}  P/R/F1={p:.3f}/{r:.3f}/{f:.3f}"
+        if y_proba is not None and len(np.unique(y_test)) == 2:
+            auc = roc_auc_score(y_test, y_proba)
+            msg += f"  ROC-AUC={auc:.3f}"
+        print(msg)
+    # Plot for the first available model with proba
+    for name, out in results.items():
+        if out.get("proba", None) is not None:
+            RocCurveDisplay.from_predictions(y_test, out["proba"])
+            ConfusionMatrixDisplay.from_predictions(y_test, out["pred"], normalize="true")
+            break
+
+# ---------- Logistic with L1/L2/ElasticNet via saga ----------
+def make_logistic_cv(preprocess, penalty_grid=("l1","l2","elasticnet"),
+                     C_grid=np.logspace(-3, 2, 8), l1_ratio_grid=(0.2, 0.5, 0.8),
+                     max_iter=2000, class_weight="balanced", n_jobs=-1, cv=5):
+    """
+    Returns a GridSearchCV over logistic penalties using solver='saga' (supports all penalties).
+    """
+    base = Pipeline(steps=[
+        ("prep", preprocess),
+        ("model", LogisticRegression(
+            solver="saga", penalty="l2", max_iter=max_iter, class_weight=class_weight, n_jobs=n_jobs
+        ))
+    ])
+
+    param_grid = [
+        {"model__penalty": ["l1"], "model__C": C_grid},  # l1 uses l1_ratio ignored
+        {"model__penalty": ["l2"], "model__C": C_grid},
+        {"model__penalty": ["elasticnet"], "model__C": C_grid, "model__l1_ratio": l1_ratio_grid},
+    ]
+    # restrict penalties if caller passed a subset
+    param_grid = [d for d in param_grid if d["model__penalty"][0] in penalty_grid]
+
+    clf = GridSearchCV(
+        base, param_grid=param_grid, scoring="roc_auc", cv=cv, n_jobs=n_jobs, refit=True
+    )
+    return clf
+
+# ---------- XGBoost with early stopping ----------
+def fit_xgb_classifier_es(preprocess, X_train, y_train, X_test, y_test,
+                          is_time_series=False, valid_size=0.2, random_state=42):
+    if not HAS_XGB:
+        return None, None, None
+    # Build design matrices
+    X_all = pd.concat([X_train, X_test], axis=0)  # to reuse the same encoder
+    preprocess.fit(X_all)  # fit OHE/scale on all to avoid unseen categories at test (or fit on train only if safer)
+    Xtr = preprocess.transform(X_train)
+    Xte = preprocess.transform(X_test)
+    # carve train/valid for early stopping from TRAIN only
+    train_idx, valid_idx = make_val_split_idx(Xtr.shape[0], test_size=valid_size, is_time_series=is_time_series, random_state=random_state)
+    X_tr, y_tr = Xtr[train_idx], y_train.iloc[train_idx]
+    X_val, y_val = Xtr[valid_idx], y_train.iloc[valid_idx]
+
+    xgb = XGBClassifier(
+        n_estimators=2000, learning_rate=0.03, max_depth=6,
+        subsample=0.8, colsample_bytree=0.8, min_child_weight=1,
+        reg_lambda=1.0, reg_alpha=0.0, random_state=random_state,
+        objective="binary:logistic", tree_method="hist", n_jobs=-1
+    )
+    xgb.fit(
+        X_tr, y_tr,
+        eval_set=[(X_val, y_val)],
+        eval_metric="auc",
+        early_stopping_rounds=100,
+        verbose=False
+    )
+    proba = xgb.predict_proba(Xte)[:,1]
+    pred = (proba >= 0.5).astype(int)
+    return xgb, pred, proba
+
+# ---------- runnable example (plug into your main) ----------
+if __name__ == "__main__":
+    # Expect df_train/df_test, num_cols, cat_cols prepared elsewhere; here’s a sketch:
+    # from Load_data_relabel_basic_cleaning import df_train, df_test, TARGET
+    # num_cols = ...; cat_cols = ...
+    pass
+

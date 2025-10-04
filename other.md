@@ -493,6 +493,12 @@ if TASK == "classification":
     plt.show()
 ```
 
+### Regularized Logistic + XGBoost Early Stopping
+- Use `make_logistic_cv()` to grid-search L1/L2/ElasticNet (solver='saga'). Metric: ROC-AUC.
+- Use `fit_xgb_classifier_es()` for XGBoost with early stopping (creates a train/valid split without leaking test).
+- If your data are time-ordered, set `IS_TIME_SERIES=True` so the validation is a tail split (no lookahead).
+
+
 ---
 
 ## 🧯 Cell 7 — Post-processing & interpretations

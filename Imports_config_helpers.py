@@ -63,3 +63,22 @@ def print_title(s):
     print("\n" + "="*len(s))
     print(s)
     print("="*len(s))
+
+# Imports_config_helpers.py
+import numpy as np
+
+def make_val_split_idx(n_total, test_size=0.2, is_time_series=False, random_state=42):
+    """
+    Return train_idx, valid_idx for early stopping without leaking test data.
+    If time series, uses a tail split; else random split.
+    """
+    n_valid = int(np.ceil(test_size * n_total))
+    if is_time_series:
+        train_idx = np.arange(0, n_total - n_valid)
+        valid_idx = np.arange(n_total - n_valid, n_total)
+    else:
+        rng = np.random.default_rng(random_state)
+        perm = rng.permutation(n_total)
+        valid_idx = perm[:n_valid]
+        train_idx = perm[n_valid:]
+    return train_idx, valid_idx

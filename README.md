@@ -1,6 +1,10 @@
 # ML research workbench
 
-Two files: this decision guide and [ML_workbench.ipynb](ML_workbench.ipynb). Matching section numbers make code easy to find.
+General templates: this decision guide and [ML_workbench.ipynb](ML_workbench.ipynb). Matching section numbers make code easy to find.
+
+## Sailboat pricing project
+
+Start with the **[boat-pricing guide](boats/README.md)** and **[question-by-question notebook](boats/Boat_pricing.ipynb)**. They cover numeric text extraction, all supplied EDA questions, pricing models for unseen makes/variants, diagnostics, and ten-boat predictions. The default dataset is synthetic; set the CSV paths to obtain real answers.
 
 ## Navigation
 
